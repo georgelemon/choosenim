@@ -162,10 +162,12 @@ get_platform() {
       local mycpu="powerpc" ;;
     *mips* )
       local mycpu="mips" ;;
-    *arm*|*armv6l* )
-      local mycpu="arm" ;;
     *aarch64* )
       local mycpu="arm64" ;;
+    *armv7l* | *armv6l* )
+      local mycpu="armv7l" ;;
+    *arm* )
+      local mycpu="arm" ;;
     *)
       err "unknown processor: $ucpu"
       ;;

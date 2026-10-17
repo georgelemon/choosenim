@@ -135,8 +135,54 @@ proc getProxy*(): Proxy =
   else:
     return nil
 
+proc getUnameM*(): string =
+  ## Returns runtime CPU name from `uname -m`, lowercased.
+  ## Returns "" when unavailable (for example on Windows without uname).
+  try:
+    let (outp, errC) = execCmdEx("uname -m")
+    if errC == 0:
+      return outp.strip().toLowerAscii()
+  except CatchableError:
+    discard
+  return ""
+
+proc getNimArchStr*(): string =
+  ## Returns Nim download arch naming: x64, x32, arm64, armv7l.
+  ## Uses runtime `uname -m` first so emulated binaries still pick native arch,
+  ## then falls back to compile-time hostCPU.
+  let m = getUnameM()
+  if m.len != 0:
+    if "aarch64" in m or m == "arm64":
+      return "arm64"
+    if "armv7" in m or "armv8" in m:
+      return "armv7l"
+    if "armv6" in m:
+      return "armv7l"
+    if m == "arm":
+      return "armv7l"
+    if "x86_64" in m or "amd64" in m:
+      return "x64"
+    if "x86-64" in m:
+      return "x64"
+    if "i386" in m or "i486" in m or "i586" in m or "i686" in m:
+      return "x32"
+  # Fallback to compile-time hostCPU.
+  when hostCPU == "amd64":
+    return "x64"
+  elif hostCPU == "arm64":
+    return "arm64"
+  elif hostCPU == "arm":
+    return "armv7l"
+  elif hostCPU == "i386":
+    return "x32"
+  else:
+    # Unknown hostCPU, assume 64-bit x86 for backwards compatibility.
+    return "x64"
+
 proc getGccArch*(params: CliParams): int =
   ## Get gcc arch by getting pointer size x 8
+  ## Kept for backwards compatibility (Windows mingw selection).
+  ## New code should use getNimArchStr() which distinguishes x86_64 from ARM.
   var
     outp = ""
     errC = 0

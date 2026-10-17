@@ -143,7 +143,17 @@ proc updateSelf(params: CliParams) =
 
   # https://stackoverflow.com/a/9163044/492186
   let tag = "v" & $version
-  let cpuName = if isAppleSilicon(): "arm" else: hostCPU
+  # Release assets use linux_amd64, linux_arm64, macosx_amd64, macosx_arm,
+  # windows_amd64. macOS ARM keeps the historic "arm" suffix for backwards
+  # compatibility. On Linux check runtime uname so an emulated x64 binary
+  # still updates to the native arm64 build.
+  let cpuName =
+    when defined(macosx):
+      if isAppleSilicon(): "arm" else: hostCPU
+    elif defined(linux):
+      if getUnameM() in ["aarch64", "arm64"]: "arm64" else: hostCPU
+    else:
+      hostCPU
   let filename = "choosenim-" & $version & "_" & hostOS & "_" & cpuName.addFileExt(ExeExt)
   let url = "https://github.com/nim-lang/choosenim/releases/download/$1/$2" % [
     tag, filename

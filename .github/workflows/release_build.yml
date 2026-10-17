@@ -53,6 +53,41 @@ jobs:
           asset_name: choosenim-${{ env.VERSION }}_linux_amd64
           file: ${{ runner.workspace }}/choosenim/choosenim/bin/choosenim
 
+  build-linux-arm64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: "choosenim"
+      - name: Build binary
+        run: |
+          STABLE_NIM=`curl -sSL https://nim-lang.org/channels/stable | xargs`
+          curl -O https://nim-lang.org/download/nim-$STABLE_NIM-linux_arm64.tar.xz
+          tar -xvJf nim-$STABLE_NIM-linux_arm64.tar.xz
+          NIMPATH=`pwd`/nim-$STABLE_NIM/bin
+          PATH=$PATH:$NIMPATH
+          # compile choosenim
+          ls -lah
+          cd choosenim
+          nimble install -y
+          nimble build --path:$NIMPATH -d:release
+          ls bin/*
+
+      - name: Write release version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo Version: $VERSION
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Upload binaries to release/tag
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          overwrite: true
+          tag: ${{ github.ref }}
+          asset_name: choosenim-${{ env.VERSION }}_linux_arm64
+          file: ${{ runner.workspace }}/choosenim/choosenim/bin/choosenim
+
   build-win32-exe:
     runs-on: windows-2025
     steps:
@@ -79,6 +114,34 @@ jobs:
           overwrite: true
           tag: ${{ github.ref }}
           asset_name: choosenim-${{ env.VERSION }}_windows_amd64.exe
+          file: ${{ runner.workspace }}/choosenim/bin/choosenim.exe
+
+  build-windows-arm64-exe:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build binary
+        run: |
+          nimble install -y
+          nimble build -d:release
+          dir bin/*
+
+      - name: Write release version
+        run: |
+          $VERSION = $Env:GITHUB_REF_NAME.Trim("v")
+          echo $VERSION
+          "VERSION=$VERSION" >> $env:GITHUB_ENV
+
+      - name: Upload binaries to release/tag
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          overwrite: true
+          tag: ${{ github.ref }}
+          asset_name: choosenim-${{ env.VERSION }}_windows_arm64.exe
           file: ${{ runner.workspace }}/choosenim/bin/choosenim.exe
 
   # ----------------------------------------------------------------------------
@@ -119,6 +182,40 @@ jobs:
           tag: ${{ github.ref }}
           asset_name: choosenim-${{ env.VERSION }}_windows_amd64.zip
           file: ${{ runner.workspace }}/choosenim/choosenim-windows.zip
+
+  build-windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build binary
+        run: |
+          nimble install -y
+          nimble build -d:release
+          dir bin/*
+          mkdir zipfile
+          mkdir zipfile/choosenim
+          cp bin/choosenim.exe zipfile/choosenim/
+          cp scripts/runme.bat zipfile/
+          Compress-Archive -Path zipfile/* -Destination choosenim-windows-arm64.zip
+
+      - name: Write release version
+        run: |
+          $VERSION = $Env:GITHUB_REF_NAME.Trim("v")
+          echo $VERSION
+          "VERSION=$VERSION" >> $env:GITHUB_ENV
+
+      - name: Upload binaries to release/tag
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          overwrite: true
+          tag: ${{ github.ref }}
+          asset_name: choosenim-${{ env.VERSION }}_windows_arm64.zip
+          file: ${{ runner.workspace }}/choosenim/choosenim-windows-arm64.zip
 
   # ----------------------------------------------------------------------------
   # this uses choosenim by itself - you may need to build manually if you break choosenim

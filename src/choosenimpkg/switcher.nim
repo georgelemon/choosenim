@@ -89,7 +89,7 @@ proc proxyToUse(): string =
         # embeddedProxyExeArm doesn't exist means choosenim was compiled on machine with macOS version below BigSur
         display("Warning:", "Since choosenim is compiled on macOS version below BigSur, choosenim won't be able to install arm64 proxies.", Warning, DebugPriority)
   # normal linux, windows build ( the same as macos amd64 )
-  display("Debug:", "Using x86_64 proxy", Warning, DebugPriority)
+  display("Debug:", "Using " & hostCPU & " proxy", Warning, DebugPriority)
   return embeddedProxyExe
 
 proc getInstallationDir*(params: CliParams, version: Version): string =
@@ -124,6 +124,13 @@ proc isDefaultCCInPath*(params: CliParams): bool =
   # Fixes issue #104
   when defined(macosx) or defined(freebsd):
     return findExe("clang") != ""
+  elif defined(windows):
+    if isWindowsArm64():
+      # Accept gcc (llvm-mingw), clang, or MSVC (cl) on Windows ARM64.
+      return findExe("gcc") != "" or findExe("clang") != "" or
+             findExe("cl") != ""
+    else:
+      return findExe("gcc") != ""
   else:
     return findExe("gcc") != ""
 
@@ -134,7 +141,12 @@ proc needsCCInstall*(params: CliParams): bool =
   when defined(windows):
     let inMingwDir =
       when defined(windows):
-        fileExists(params.getMingwBin() / "gcc".addFileExt(ExeExt))
+        if isWindowsArm64():
+          # llvm-mingw provides gcc wrapper plus clang.
+          fileExists(params.getMingwBin() / "gcc".addFileExt(ExeExt)) or
+          fileExists(params.getMingwBin() / "clang".addFileExt(ExeExt))
+        else:
+          fileExists(params.getMingwBin() / "gcc".addFileExt(ExeExt))
       else: false
 
     # Check whether the `gcc` we have in PATH is actually choosenim's proxy exe.
@@ -149,6 +161,11 @@ proc needsDLLInstall*(params: CliParams): bool =
   ##
   ## TODO: In the future we can probably extend this and let the user
   ## know what DLLs they are missing on all operating systems.
+  when defined(windows):
+    if isWindowsArm64():
+      # dlls.zip ships x64 OpenSSL/PCRE binaries which do not load on ARM64.
+      # Skip them; the base compiler works without them.
+      return false
   proc isInstalled(params: CliParams, name: string): bool =
     let
       inPath = findExe(name, extensions=["dll"]) != ""
@@ -258,11 +275,18 @@ proc switchToPath(filepath: string, params: CliParams): bool =
   when defined(windows):
     if not isDefaultCCInPath(params):
       let mingwBin = getMingwBin(params)
-      if not fileExists(mingwBin / "gcc".addFileExt(ExeExt)):
-        let msg = "No 'gcc' binary found in '$1'." % mingwBin
-        raise newException(ChooseNimError, msg)
+      if isWindowsArm64():
+        if not fileExists(mingwBin / "gcc".addFileExt(ExeExt)) and
+           not fileExists(mingwBin / "clang".addFileExt(ExeExt)):
+          let msg = "No 'gcc' or 'clang' binary found in '$1'." % mingwBin
+          raise newException(ChooseNimError, msg)
+        proxiesToInstall.add(mingwProxiesArm64)
+      else:
+        if not fileExists(mingwBin / "gcc".addFileExt(ExeExt)):
+          let msg = "No 'gcc' binary found in '$1'." % mingwBin
+          raise newException(ChooseNimError, msg)
 
-      proxiesToInstall.add(mingwProxies)
+        proxiesToInstall.add(mingwProxies)
 
   # Return early if this version is already selected.
   let selectedPath = params.getSelectedPath()

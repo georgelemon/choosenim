@@ -115,18 +115,29 @@ proc getCurrentChannelFile*(params: CliParams): string =
 proc getAnalyticsFile*(params: CliParams): string =
   return params.chooseNimDir / "analytics"
 
+proc isWindowsArm64*(): bool =
+  ## Runtime check for Windows ARM64. Returns false on non-Windows.
+  when defined(windows):
+    let archEnv = getEnv("PROCESSOR_ARCHITECTURE").toLowerAscii()
+    return "arm64" in archEnv or "aarch64" in archEnv
+  else:
+    return false
+
 proc getCpuArch*(): int =
-  ## Get CPU arch on Windows - get env var PROCESSOR_ARCHITECTURE
+  ## Get CPU arch on Windows - get env var PROCESSOR_ARCHITECTURE.
+  ## Returns bitness (32 or 64). On Windows ARM64 returns 64 since pointers
+  ## are 64-bit; use isWindowsArm64() when you need to tell x64 from ARM64.
   var failMsg = ""
 
   let
     archEnv = getEnv("PROCESSOR_ARCHITECTURE")
     arch6432Env = getEnv("PROCESSOR_ARCHITEW6432")
   if arch6432Env.len != 0:
-    # https://blog.differentpla.net/blog/2013/03/10/processor-architew6432/
+    # https://blog.differentpla.net/blog/2013/03/10/process-architew6432/
     result = 64
   elif "64" in archEnv:
     # https://superuser.com/a/1441469
+    # Note: "ARM64" also contains "64", which is correct bitness-wise.
     result = 64
   elif "86" in archEnv:
     result = 32
@@ -140,6 +151,10 @@ proc getCpuArch*(): int =
       "Could not detect CPU architecture: " & failMsg)
 
 proc getMingwPath*(params: CliParams): string =
+  when defined(windows):
+    if isWindowsArm64():
+      # llvm-mingw based toolchain, kept separate from x86 mingw32/64.
+      return params.getInstallDir() / "mingw_arm64"
   let arch = getCpuArch()
   return params.getInstallDir() / "mingw" & $arch
 

@@ -190,18 +190,28 @@ when defined(linux) or defined(windows):
       check exitCode == QuitSuccess
 
       check inLines(output.processOutput, "downloading nim " & stableVersion)
-      check inLines(output.processOutput, "already built")
+      when defined(arm64):
+        # ARM64 has no official binaries for some platforms (Windows) or
+        # older versions, so a source build is expected.
+        check (inLines(output.processOutput, "already built") or
+               inLines(output.processOutput, "building"))
+      else:
+        check inLines(output.processOutput, "already built")
       check hasLine(output.processOutput, "switched to nim " & stableVersion)
 
       when defined(windows):
         check inLines(output.processOutput, "downloading c compiler")
-        check inLines(output.processOutput, "downloading dlls")
+        when not defined(arm64):
+          check inLines(output.processOutput, "downloading dlls")
 
       check dirExists(choosenimDir / "toolchains" / "nim-" & stableVersion)
       check not dirExists(choosenimDir / "toolchains" / "nim" & stableVersion / "c_code")
 
       when defined(windows):
-        check dirExists(choosenimDir / "toolchains" / "mingw" & $getCpuArch())
+        when defined(arm64):
+          check dirExists(choosenimDir / "toolchains" / "mingw_arm64")
+        else:
+          check dirExists(choosenimDir / "toolchains" / "mingw" & $getCpuArch())
 
       # check that we can call teh Nim compiler and it shows the correct version
       (output, exitCode) = exec("-v", exe=nimbleDir / "bin" / "nim".addFileExt(ExeExt), yes=false)

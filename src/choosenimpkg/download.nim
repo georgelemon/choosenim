@@ -20,18 +20,22 @@ const
   websiteUrlGz = "https://nim-lang.org/download/nim-$1.tar.gz"
   csourcesUrl = "https://github.com/nim-lang/csources"
   dlArchive = "archive/$1.tar.gz"
-  binaryUrl = "https://nim-lang.org/download/nim-$1$2_x$3" & getBinArchiveFormat()
+  binaryUrl = "https://nim-lang.org/download/nim-$1$2_$3" & getBinArchiveFormat()
   userAgent = "choosenim/" & chooseNimVersion
 
 const # Windows-only
   mingwUrl = "https://nim-lang.org/download/mingw$1.zip"
   dllsUrl = "https://nim-lang.org/download/dlls.zip"
+  # Native Windows ARM64 toolchain (llvm-mingw, runs on ARM64, targets ARM64
+  # by default via unprefixed gcc/clang wrappers). Pinned for reproducibility.
+  # ~182MB. See https://github.com/mstorsjo/llvm-mingw/releases.
+  llvmMingwArm64Url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-aarch64.zip"
 
 const
   progressBarLength = 50
 
 
-proc getNightliesUrl(parsedContents: JsonNode, arch: int): (string, string) =
+proc getNightliesUrl(parsedContents: JsonNode, archStr: string): (string, string) =
   let os =
     when defined(windows): "windows"
     elif defined(linux): "linux"
@@ -44,16 +48,18 @@ proc getNightliesUrl(parsedContents: JsonNode, arch: int): (string, string) =
         let aname = asset["name"].getStr()
         let url = asset{"browser_download_url"}.getStr("")
         if os in aname:
-          when not defined(macosx):
-            if "x" & $arch in aname:
-              result = (url, tagName)
-          else:
+          when defined(macosx):
             if isAppleSilicon():
               if "arm64" in aname:
                 result = (url, tagName)
             else:
               if "x64" in aname:
                 result = (url, tagName)
+          else:
+            # archStr is one of x64, x32, arm64, armv7l and matches
+            # upstream nightly asset names like linux_arm64 and linux_armv7l.
+            if archStr in aname:
+              result = (url, tagName)
         if result[0].len != 0:
           break
     if result[0].len != 0:
@@ -277,8 +283,8 @@ proc needsDownload(params: CliParams, downloadUrl: string,
 
 proc retrieveUrl*(url: string): string
 proc downloadImpl(version: Version, params: CliParams): string =
-  let arch = getGccArch(params)
-  displayDebug("Detected", "arch as " & $arch & "bit")
+  let archStr = getNimArchStr()
+  displayDebug("Detected", "arch as " & archStr)
   if version.isSpecial():
     var reference, url = ""
     if $version in ["#devel", "#head"] and not params.latest:
@@ -286,7 +292,7 @@ proc downloadImpl(version: Version, params: CliParams): string =
       try:
         let rawContents = retrieveUrl(githubNightliesReleasesUrl.addGithubAuthentication())
         let parsedContents = parseJson(rawContents)
-        (url, reference) = getNightliesUrl(parsedContents, arch)
+        (url, reference) = getNightliesUrl(parsedContents, archStr)
         if url.len == 0:
           display(
             "Warning", "Recent nightly release not found, installing latest devel commit.",
@@ -323,17 +329,37 @@ proc downloadImpl(version: Version, params: CliParams): string =
 
     var outputPath: string
 
-    # Use binary builds for Windows and Linux
-    when defined(Windows) or defined(linux):
-      let os = when defined(linux): "-linux" else: ""
-      let binUrl = binaryUrl % [$version, os, $arch]
-      if not needsDownload(params, binUrl, outputPath): return outputPath
-      try:
-        downloadFile(binUrl, outputPath, params)
-        return outputPath
-      except HttpRequestError:
-        display("Info:", "Binary build unavailable, building from source",
-                priority = HighPriority)
+    # Use binary builds for Windows, Linux and macOS when available.
+    # Falls back to source build below when the binary is missing (for
+    # example old versions without arm64 assets, or Windows ARM64 which has
+    # no official binaries).
+    when defined(Windows) or defined(linux) or defined(macosx):
+      let os = when defined(linux): "-linux"
+               elif defined(macosx): "-macosx"
+               else: ""
+      when defined(Windows):
+        # No official Windows ARM64 Nim binaries exist yet.
+        if archStr notin ["x64", "x32"]:
+          display("Warning:", "No official Windows " & archStr &
+            " binary available, building from source", Warning, HighPriority)
+        else:
+          let binUrl = binaryUrl % [$version, os, archStr]
+          if not needsDownload(params, binUrl, outputPath): return outputPath
+          try:
+            downloadFile(binUrl, outputPath, params)
+            return outputPath
+          except HttpRequestError:
+            display("Info:", "Binary build unavailable, building from source",
+                    priority = HighPriority)
+      else:
+        let binUrl = binaryUrl % [$version, os, archStr]
+        if not needsDownload(params, binUrl, outputPath): return outputPath
+        try:
+          downloadFile(binUrl, outputPath, params)
+          return outputPath
+        except HttpRequestError:
+          display("Info:", "Binary build unavailable, building from source",
+                  priority = HighPriority)
 
     let hasUnxz = findExe("unxz") != ""
     let url = (if hasUnxz: websiteUrlXz else: websiteUrlGz) % $version
@@ -365,6 +391,15 @@ proc downloadCSources*(params: CliParams): string =
   return outputPath
 
 proc downloadMingw*(params: CliParams): string =
+  when defined(windows):
+    if isWindowsArm64():
+      var outputPath: string
+      if not needsDownload(params, llvmMingwArm64Url, outputPath):
+        return outputPath
+      display("Downloading", "C compiler (llvm-mingw ARM64)",
+              priority = HighPriority)
+      downloadFile(llvmMingwArm64Url, outputPath, params)
+      return outputPath
   let
     arch = getCpuArch()
     url = mingwUrl % $arch

@@ -11,7 +11,8 @@ when defined(windows):
 
 proc buildFromCSources(params: CliParams) =
   when defined(windows):
-    let arch = getGccArch(params)
+    # getCpuArch raises a clear error on Windows ARM64 (no mingw binaries).
+    let arch = getCpuArch()
     displayDebug("Detected", "arch as " & $arch & "bit")
     if arch == 32:
       doCmdRaw("build.bat")

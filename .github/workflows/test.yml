@@ -40,6 +40,29 @@ jobs:
           nimble test
 
 
+  build-linux-arm64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build binary
+        run: |
+          nimble install -y
+          nimble build -d:release
+          ls bin/*
+      - name: Testing binaries
+        run: |
+          ${{ runner.workspace }}/choosenim/bin/choosenim stable
+          /home/runner/.nimble/bin/nim -v
+          ${{ runner.workspace }}/choosenim/bin/choosenim devel
+          /home/runner/.nimble/bin/nim -v
+          nimble test
+
+
   # ----------------------------------------------------------------------------
   # this uses choosenim by itself - you may need to build manually if you break choosenim
   build-win32:
@@ -62,7 +85,23 @@ jobs:
 
       - name: Testing binaries
         run: nimble test
-          
+
+  build-windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jiro4989/setup-nim-action@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build binary
+        run: |
+          nimble install -y
+          nimble build
+          dir bin/*
+
+      - name: Testing binaries
+        run: nimble test
+
   # ----------------------------------------------------------------------------
   # this uses choosenim by itself - you may need to build manually if you break choosenim
   build-macos:
