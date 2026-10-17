@@ -97,13 +97,18 @@ assuming that 1.0.0 was selected.
 ### How toolchains are installed
 
 ``choosenim`` downloads and installs the official release
-[binaries](https://nim-lang.org/install.html) on Windows and Linux. On other
-platforms, the official source [release](https://nim-lang.org/install_unix.html)
+[binaries](https://nim-lang.org/install.html) on Windows, Linux and macOS when
+available (including `linux_arm64`, `linux_armv7l`, and `macosx_arm64` for
+recent Nim releases). Otherwise the official source
+[release](https://nim-lang.org/install_unix.html)
 is downloaded and built. This operation is only performed once when a new
 version is selected.
 
 As official binaries are made available for more platforms, ``choosenim`` will
-install them accordingly.
+install them accordingly. Windows ARM64 has no official Nim binaries yet, so
+choosenim builds from source there: it downloads an llvm-mingw ARM64 toolchain
+automatically, or reuses `gcc`, `clang`, or MSVC `cl` when already in `PATH`.
+The bundled `dlls.zip` (x64 OpenSSL/PCRE) is skipped on Windows ARM64.
 
 ## Dependencies
 
